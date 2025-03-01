@@ -33,7 +33,7 @@ auto CheckFunctionCall(Func func, Args... args)
 // Throws an exception with error message if the result is different from 'FALSE' or values converted to 'FALSE'
 // Returns the result of the wrapped function execution
 template<typename Func, typename... Args>
-auto CheckNonZeroResult(const std::string& errorMessage, Func func, Args... args)
+auto CheckZeroResult(const std::string& errorMessage, Func func, Args... args)
 {
     static_assert(std::is_invocable_v<Func, Args...>, "Provided function is not invocable with the given arguments.");
     using ResultType = std::invoke_result_t<Func, Args...>;
