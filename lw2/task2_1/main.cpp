@@ -6,6 +6,7 @@
 
 const std::string COMMAND_GENERATE = "generate";
 const std::string COMMAND_STEP = "step";
+const std::string COMMAND_VISUALIZE = "visualize";
 
 void PrintUsage()
 {
@@ -17,6 +18,7 @@ void PrintUsage()
 struct ProgramArgs
 {
     bool isGenerate = false;
+    bool isVisualize = false;
     std::string inputPath;
     std::string outputPath;
     int width = 0;
@@ -64,6 +66,17 @@ ProgramArgs ParseArgs(int argc, char* argv[])
             args.outputPath = argv[4];
         }
     }
+    else if (EqualsIgnoreCase(command, COMMAND_VISUALIZE))
+    {
+        if (argc > 4)
+        {
+            PrintUsage();
+            throw std::invalid_argument("invalid count of arguments for command: " + COMMAND_VISUALIZE);
+        }
+        args.isVisualize = true;
+        args.inputPath = argv[2];
+        args.numThreads = std::stoi(argv[3]);
+    }
     else
     {
         PrintUsage();
@@ -83,6 +96,11 @@ int main(int argc, char* argv[])
         if (args.isGenerate)
         {
             LifeGameController::Generate(args.outputPath, args.width, args.height, args.probability);
+        }
+        else if (args.isVisualize)
+        {
+            gameController.LoadGame(args.inputPath);
+            gameController.Visualize(args.numThreads);
         }
         else
         {

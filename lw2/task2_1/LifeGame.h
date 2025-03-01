@@ -10,6 +10,7 @@
 #include "_timer.h"
 
 const char FILLED = '#';
+const char EMPTY = ' ';
 
 struct LifeGameData
 {
@@ -86,8 +87,8 @@ private:
             {
                 int neighbors = CountNeighbors(x, y);
                 m_newField[y][x] = (m_field[y][x] == FILLED
-                                    ? (neighbors == 2 || neighbors == 3 ? FILLED : ' ')
-                                    : (neighbors == 3 ? FILLED : ' '));
+                                    ? (neighbors == 2 || neighbors == 3 ? FILLED : EMPTY)
+                                    : (neighbors == 3 ? FILLED : EMPTY));
             }
         }
     }
