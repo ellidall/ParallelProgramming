@@ -10,7 +10,7 @@
 #include "_timer.h"
 
 const char FILLED = '#';
-const char EMPTY = ' ';
+const char EMPTY = '_';
 
 struct LifeGameData
 {
@@ -50,7 +50,7 @@ public:
             thread.join();
         }
 
-        m_field = m_newField;
+        m_field.swap(m_newField);
     }
 
 private:
@@ -58,7 +58,6 @@ private:
     int m_height = 0;
     std::vector<std::string> m_field;
     std::vector<std::string> m_newField;
-    std::mutex m_mutex;
 
     int CountNeighbors(int x, int y)
     {
@@ -80,16 +79,17 @@ private:
 
     void UpdateSection(int startY, int endY)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
         for (int y = startY; y < endY; y++)
         {
             for (int x = 0; x < m_width; x++)
             {
                 int neighbors = CountNeighbors(x, y);
+                std::cout << neighbors;
                 m_newField[y][x] = (m_field[y][x] == FILLED
                                     ? (neighbors == 2 || neighbors == 3 ? FILLED : EMPTY)
                                     : (neighbors == 3 ? FILLED : EMPTY));
             }
+            std::cout << std::endl;
         }
     }
 };
