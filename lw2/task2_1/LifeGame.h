@@ -84,12 +84,10 @@ private:
             for (int x = 0; x < m_width; x++)
             {
                 int neighbors = CountNeighbors(x, y);
-                std::cout << neighbors;
                 m_newField[y][x] = (m_field[y][x] == FILLED
                                     ? (neighbors == 2 || neighbors == 3 ? FILLED : EMPTY)
                                     : (neighbors == 3 ? FILLED : EMPTY));
             }
-            std::cout << std::endl;
         }
     }
 };
