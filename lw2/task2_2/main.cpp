@@ -1,86 +1,63 @@
 #include <iostream>
-#include <vector>
+#include <string>
 #include "GaussBlur.h"
-#include "_helpers.h"
 #include "ImageProcessor.h"
 
-const std::string COMMAND_GENERATE = "generate";
-const std::string COMMAND_STEP = "step";
+const std::string COMMAND_APPLY = "apply";
 const std::string COMMAND_VISUALIZE = "visualize";
 
 void PrintUsage()
 {
-    std::cerr << "Использование:" << std::endl
-              << "  life generate OUTPUT_FILE WIDTH HEIGHT PROBABILITY" << std::endl
-              << "  life step INPUT_FILE NUM_THREADS [OUTPUT_FILE]" << std::endl;
+    std::cerr << "Usage:" << std::endl
+              << "  gauss apply INPUT_FILE OUTPUT_FILE RADIUS" << std::endl
+              << "  gauss visualize INPUT_FILE" << std::endl;
 }
 
 struct ProgramArgs
 {
-    bool isGenerate = false;
     bool isVisualize = false;
     std::string inputPath;
     std::string outputPath;
-    int width = 0;
-    int height = 0;
-    double probability = 0.0;
-    int numThreads = 1;
+    int radius = 0;
+    int numTreads = 1;
 };
 
 ProgramArgs ParseArgs(int argc, char* argv[])
 {
-    if (argc < 4)
+    if (argc < 3 || argc > 6)
     {
         PrintUsage();
-        throw std::invalid_argument("not enough arguments");
+        throw std::invalid_argument("not enough arguments provided");
     }
 
     ProgramArgs args;
     std::string command = argv[1];
-
-    if (EqualsIgnoreCase(command, COMMAND_GENERATE))
+    if (command == COMMAND_APPLY)
     {
         if (argc != 6)
         {
             PrintUsage();
-            throw std::invalid_argument("invalid count of arguments for command: " + COMMAND_GENERATE);
+            throw std::invalid_argument("invalid number of arguments for command: " + COMMAND_APPLY);
         }
-        args.isGenerate = true;
-        args.outputPath = argv[2];
-        args.width = std::stoi(argv[3]);
-        args.height = std::stoi(argv[4]);
-        args.probability = std::stod(argv[5]);
-    }
-    else if (EqualsIgnoreCase(command, COMMAND_STEP))
-    {
-        if (argc > 5)
-        {
-            PrintUsage();
-            throw std::invalid_argument("invalid count of arguments for command: " + COMMAND_STEP);
-        }
-        args.isGenerate = false;
         args.inputPath = argv[2];
-        args.numThreads = std::stoi(argv[3]);
-        if (argc == 5)
-        {
-            args.outputPath = argv[4];
-        }
+        args.outputPath = argv[3];
+        args.radius = std::stoi(argv[4]);
+        args.numTreads = std::stoi(argv[5]);
     }
-    else if (EqualsIgnoreCase(command, COMMAND_VISUALIZE))
+    else if (command == COMMAND_VISUALIZE)
     {
-        if (argc > 4)
+        if (argc != 3)
         {
             PrintUsage();
-            throw std::invalid_argument("invalid count of arguments for command: " + COMMAND_VISUALIZE);
+            throw std::invalid_argument("invalid number of arguments for command: " + COMMAND_VISUALIZE);
         }
         args.isVisualize = true;
         args.inputPath = argv[2];
-        args.numThreads = std::stoi(argv[3]);
     }
     else
     {
         PrintUsage();
-        throw std::invalid_argument("invalid command");
+        throw std::invalid_argument("unknown command: " + command);
     }
 
     return args;
@@ -91,22 +68,17 @@ int main(int argc, char* argv[])
     try
     {
         ProgramArgs args = ParseArgs(argc, argv);
-        LifeGameController gameController;
 
-        if (args.isGenerate)
+        if (args.isVisualize)
         {
-            LifeGameController::Generate(args.outputPath, args.width, args.height, args.probability);
-        }
-        else if (args.isVisualize)
-        {
-            gameController.LoadGame(args.inputPath);
-            gameController.Visualize(args.numThreads);
+            GaussBlur::ShowInteractiveBlur(args.inputPath);
         }
         else
         {
-            gameController.LoadGame(args.inputPath);
-            gameController.RunStep(args.numThreads);
-            gameController.SaveGame(args.outputPath.empty() ? args.inputPath : args.outputPath);
+            cv::Mat image = ImageProcessor::LoadImage(args.inputPath);
+            GaussBlur blur(args.radius, args.numTreads);
+            blur.Apply(image);
+            ImageProcessor::SaveImage(args.outputPath, image);
         }
     }
     catch (const std::exception& e)
@@ -117,3 +89,4 @@ int main(int argc, char* argv[])
 
     return EXIT_SUCCESS;
 }
+
