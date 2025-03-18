@@ -2,6 +2,7 @@
 #include <string>
 #include "GaussBlur.h"
 #include "ImageProcessor.h"
+#include "_timer.h"
 
 const std::string COMMAND_APPLY = "apply";
 const std::string COMMAND_VISUALIZE = "visualize";
@@ -77,7 +78,9 @@ int main(int argc, char* argv[])
         {
             cv::Mat image = ImageProcessor::LoadImage(args.inputPath);
             GaussBlur blur(args.radius, args.numTreads);
+            Timer timer;
             blur.Apply(image);
+            std::cout << "Total time: " << timer.GetElapsed() << std::endl;
             ImageProcessor::SaveImage(args.outputPath, image);
         }
     }

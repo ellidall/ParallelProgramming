@@ -35,10 +35,11 @@ public:
         m_kernel = GaussBlur::GenerateGaussianKernel(m_radius, m_sigma);
     }
 
+    //вынести в отдельный класс
     static void ShowInteractiveBlur(const std::string& imagePath)
     {
         cv::Mat image = ImageProcessor::LoadImage(imagePath);
-        int radius = 0;
+        int radius = 10;
         GaussBlur gaussBlur(radius, 12);
 
         auto onTrackbar = [](int pos, void* userdata) {
@@ -48,23 +49,7 @@ public:
 
             gaussBlur->SetRadius(pos);
             gaussBlur->Apply(img);
-
-//            int windowWidth = 800;
-//            int windowHeight = 600;
-//            float aspectRatio = static_cast<float>(img.cols) / static_cast<float>(img.rows);
-//            int newWidth = windowWidth;
-//            int newHeight = static_cast<int>(newWidth / aspectRatio);
-//
-//            if (newHeight > windowHeight)
-//            {
-//                newHeight = windowHeight;
-//                newWidth = static_cast<int>(newHeight * aspectRatio);
-//            }
-
-//            cv::Mat resizedImage;
-//            cv::resize(img, resizedImage, cv::Size(newWidth, newHeight));
             cv::imshow("Gaussian Blur", img);
-//            img = resizedImage;
         };
 
         cv::namedWindow("Gaussian Blur", cv::WINDOW_NORMAL);
@@ -106,11 +91,13 @@ private:
 
     static void ApplyGammaCorrection(cv::Mat& image, float gamma)
     {
+        // распараллелить
         float invGamma = 1.0f / gamma;
         for (int y = 0; y < image.rows; ++y)
         {
             for (int x = 0; x < image.cols; ++x)
             {
+                //выполнив гамма коррекцию лучше сохранить данные во float, чтобы не терять качество
                 auto& pixel = image.at<cv::Vec3b>(y, x);
                 for (int c = 0; c < 3; ++c)
                 {
@@ -130,6 +117,7 @@ private:
         cv::Mat temp = image.clone();
 
         auto process = [&](int start, int end) {
+            //транспонировать, чтобы было быстрее
             if (isHorizontal)
             {
                 for (int y = start; y < end; ++y)
