@@ -18,23 +18,24 @@ public:
 class Bank
 {
 public:
-    explicit Bank(Money initialCash) : m_cash(initialCash), m_operationsCount(0)
+    explicit Bank(Money initialMoney) : m_money(initialMoney)
     {
-        if (initialCash < 0)
+        if (initialMoney < 0)
         {
-            throw std::out_of_range("Начальное количество денег в банке не может быть отрицательным");
+            throw std::out_of_range("Количество наличных в банке не может быть отрицательным");
         }
     };
 
-    size_t GetAccountsCount()
+    size_t GetAccountsCount() const
     {
-        return accounts.size();
+        std::lock_guard<std::mutex> lock(mtx);
+        return m_accounts.size();
     }
 
     AccountId OpenAccount()
     {
         std::lock_guard<std::mutex> lock(mtx);
-        accounts[m_nextId] = 0;
+        m_accounts[m_nextId] = 0;
         m_operationsCount++;
         return m_nextId++;
     }
@@ -42,72 +43,82 @@ public:
     Money CloseAccount(AccountId accountId)
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (accounts.find(accountId) == accounts.end())
-        {
-            throw BankOperationError("Неизвестный аккаунт");
-        }
-        Money balance = accounts[accountId];
-        m_cash += balance;
-        accounts.erase(accountId);
+        auto it = m_accounts.find(accountId);
+        if (it == m_accounts.end()) throw BankOperationError("Неизвестный аккаунт");
+
+        Money balance = it->second;
+        m_accounts.erase(it);
+        m_money += balance;
         m_operationsCount++;
         return balance;
     }
 
     void DepositMoney(AccountId account, Money amount)
     {
+        if (!TryDepositMoney(account, amount))
+        {
+            throw BankOperationError("Ошибка при депозите, AccountId = " + std::to_string(account));
+        }
+    }
+
+    bool TryDepositMoney(AccountId account, Money amount)
+    {
         std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Нельзя положить на счёт отрицательное число");
-        if (m_cash < amount) throw BankOperationError("Недостаточно денег в банке ");
+        if (amount < 0) return false;
+        if (m_money < amount) return false;
 
-        if (accounts.find(account) == accounts.end()) throw BankOperationError("Invalid account ID");
+        auto it = m_accounts.find(account);
+        if (it == m_accounts.end()) return false;
 
-        accounts[account] += amount;
-        m_cash -= amount;
+        it->second += amount;
+        m_money -= amount;
         m_operationsCount++;
+        return true;
     }
 
     void WithdrawMoney(AccountId account, Money amount)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Нельзя снять со счёта отрицательное число");
-        if (accounts.find(account) == accounts.end()) throw BankOperationError("Неизвестный аккаунт");
-        if (accounts[account] < amount) throw BankOperationError("Недостаточно средств");
+        if (!TryWithdrawMoney(account, amount))
+        {
+            throw BankOperationError("Ошибка при снятии денег, AccountId = " + std::to_string(account));
+        }
+    }
 
-        accounts[account] -= amount;
-        m_cash += amount;
+    bool TryWithdrawMoney(AccountId account, Money amount)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        if (amount < 0) return false;
+
+        auto it = m_accounts.find(account);
+        if (it == m_accounts.end()) return false;
+        if (it->second < amount) return false; // Недостаточно средств на счету
+
+        it->second -= amount;
+        m_money += amount;
         m_operationsCount++;
+        return true;
     }
 
     void SendMoney(AccountId srcAccountId, AccountId dstAccountId, Money amount)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Нельзя отправить на счёт отрицательное число");
-        if (accounts.find(srcAccountId) == accounts.end() || accounts.find(dstAccountId) == accounts.end())
+        if (!TrySendMoney(srcAccountId, dstAccountId, amount))
         {
-            throw BankOperationError("Неизвестный аккаунт");
+            throw BankOperationError("Перевод невозможен");
         }
-        if (accounts[srcAccountId] < amount)
-        {
-            throw BankOperationError("Недостаточно средств");
-        }
-
-        accounts[srcAccountId] -= amount;
-        accounts[dstAccountId] += amount;
-        m_operationsCount++;
     }
 
     bool TrySendMoney(AccountId srcAccountId, AccountId dstAccountId, Money amount)
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Negative transfer amount");
-        if (accounts.find(srcAccountId) == accounts.end() || accounts.find(dstAccountId) == accounts.end())
-        {
-            throw BankOperationError("Invalid account ID");
-        }
-        if (accounts[srcAccountId] < amount) return false;
+        if (amount < 0) return false;
 
-        accounts[srcAccountId] -= amount;
-        accounts[dstAccountId] += amount;
+        auto srcIt = m_accounts.find(srcAccountId);
+        auto dstIt = m_accounts.find(dstAccountId);
+        if (srcIt == m_accounts.end() || dstIt == m_accounts.end()) return false;
+        if (srcIt->second < amount) return false;
+
+        srcIt->second -= amount;
+        dstIt->second += amount;
         m_operationsCount++;
         return true;
     }
@@ -115,14 +126,20 @@ public:
     Money GetCash() const
     {
         std::lock_guard<std::mutex> lock(mtx);
-        return m_cash;
+        Money total = 0;
+        for (const auto& [accountId, balance] : m_accounts)
+        {
+            total += balance;
+        }
+        return total;
     }
 
     Money GetAccountBalance(AccountId accountId) const
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (accounts.find(accountId) == accounts.end()) throw BankOperationError("Invalid account ID");
-        return accounts.at(accountId);
+        auto it = m_accounts.find(accountId);
+        if (it == m_accounts.end()) throw BankOperationError("Неизвестный аккаунт");
+        return it->second;
     }
 
     unsigned long long GetOperationsCount() const
@@ -133,7 +150,7 @@ public:
 private:
     mutable std::mutex mtx;
     AccountId m_nextId = 0;
-    std::map<AccountId, Money> accounts;
-    Money m_cash;
-    std::atomic<unsigned long long> m_operationsCount;
+    std::map<AccountId, Money> m_accounts;
+    std::atomic<unsigned long long> m_operationsCount = 0;
+    Money m_money;
 };
