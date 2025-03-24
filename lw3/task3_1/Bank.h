@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include <unordered_map>
+#include <map>
 #include <mutex>
 #include <atomic>
 #include <stdexcept>
@@ -22,17 +22,21 @@ public:
     {
         if (initialCash < 0)
         {
-            throw BankOperationError("Initial m_cash cannot be negative");
+            throw std::out_of_range("Начальное количество денег в банке не может быть отрицательным");
         }
     };
+
+    size_t GetAccountsCount()
+    {
+        return accounts.size();
+    }
 
     AccountId OpenAccount()
     {
         std::lock_guard<std::mutex> lock(mtx);
-        static AccountId nextId = 1;
-        accounts[nextId] = 0;
+        accounts[m_nextId] = 0;
         m_operationsCount++;
-        return nextId++;
+        return m_nextId++;
     }
 
     Money CloseAccount(AccountId accountId)
@@ -40,7 +44,7 @@ public:
         std::lock_guard<std::mutex> lock(mtx);
         if (accounts.find(accountId) == accounts.end())
         {
-            throw BankOperationError("Invalid account ID");
+            throw BankOperationError("Неизвестный аккаунт");
         }
         Money balance = accounts[accountId];
         m_cash += balance;
@@ -52,8 +56,8 @@ public:
     void DepositMoney(AccountId account, Money amount)
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Negative deposit amount");
-        if (m_cash < amount) throw BankOperationError("Not enough m_cash in circulation");
+        if (amount < 0) throw std::out_of_range("Нельзя положить на счёт отрицательное число");
+        if (m_cash < amount) throw BankOperationError("Недостаточно денег в банке ");
 
         if (accounts.find(account) == accounts.end()) throw BankOperationError("Invalid account ID");
 
@@ -65,11 +69,9 @@ public:
     void WithdrawMoney(AccountId account, Money amount)
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Negative withdrawal amount");
-
-        if (accounts.find(account) == accounts.end()) throw BankOperationError("Invalid account ID");
-
-        if (accounts[account] < amount) throw BankOperationError("Not enough funds");
+        if (amount < 0) throw std::out_of_range("Нельзя снять со счёта отрицательное число");
+        if (accounts.find(account) == accounts.end()) throw BankOperationError("Неизвестный аккаунт");
+        if (accounts[account] < amount) throw BankOperationError("Недостаточно средств");
 
         accounts[account] -= amount;
         m_cash += amount;
@@ -79,14 +81,14 @@ public:
     void SendMoney(AccountId srcAccountId, AccountId dstAccountId, Money amount)
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) throw std::out_of_range("Negative transfer amount");
+        if (amount < 0) throw std::out_of_range("Нельзя отправить на счёт отрицательное число");
         if (accounts.find(srcAccountId) == accounts.end() || accounts.find(dstAccountId) == accounts.end())
         {
-            throw BankOperationError("Invalid account ID");
+            throw BankOperationError("Неизвестный аккаунт");
         }
         if (accounts[srcAccountId] < amount)
         {
-            throw BankOperationError("Insufficient funds");
+            throw BankOperationError("Недостаточно средств");
         }
 
         accounts[srcAccountId] -= amount;
@@ -130,7 +132,8 @@ public:
 
 private:
     mutable std::mutex mtx;
-    std::unordered_map<AccountId, Money> accounts;
+    AccountId m_nextId = 0;
+    std::map<AccountId, Money> accounts;
     Money m_cash;
     std::atomic<unsigned long long> m_operationsCount;
 };

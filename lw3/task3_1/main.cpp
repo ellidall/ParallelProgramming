@@ -1,29 +1,39 @@
 #include <iostream>
 #include <vector>
 #include "_libs/_helpers.h"
-#include "_libs/_logger.h"
 #include "_libs/_exceptionHandler.h"
-#include "SimulationExecutor.h"
+#include "SimulationController.h"
 
 const std::string FLAG_PARALLEL = "-P";
 const std::string FLAG_SEQUENTIAL = "-S";
+const std::string FLAG_TEST_MOD = "--test";
+const std::string FLAG_LOGGING_ON = "-L";
+const std::string FLAG_DURATION_ON = "-D";
+const Money BANK_BALANCE = 100000;
 
 void PrintUsage()
 {
     Logger::Println("Usage:");
-    Logger::Println("\tbank " + FLAG_PARALLEL + " <money in circulation>");
-    Logger::Println("\tbank " + FLAG_SEQUENTIAL + " <money in circulation>");
+    Logger::Println(
+            "\tbank " + FLAG_PARALLEL + " <money in circulation> <simulation duration> <optional: -L> <optional: -D>");
+    Logger::Println("\tbank " + FLAG_SEQUENTIAL +
+                    " <money in circulation> <simulation duration> <optional: -L> <optional: -D>");
+    Logger::Println("\tbank " + FLAG_SEQUENTIAL + " <money in circulation> --test <optional: -L> <optional: -D>");
 }
 
 struct ProgramArgs
 {
-    Money initialCash = 0;
     bool isParallel = false;
+    bool isTestMod = false;
+    bool isLoggingOn = false;
+    bool isDurationOn = false;
+    Money initialCash = 0;
+    double durationLimit = 0;
 };
 
 ProgramArgs ParseArgs(int argc, char* argv[])
 {
-    if (argc != 3)
+    if (argc < 4 || argc > 6)
     {
         PrintUsage();
         throw std::invalid_argument("invalid count of arguments");
@@ -42,53 +52,64 @@ ProgramArgs ParseArgs(int argc, char* argv[])
     else
     {
         PrintUsage();
-        throw std::invalid_argument("invalid command");
+        throw std::invalid_argument("invalid command <" + flag + ">");
     }
 
     args.initialCash = std::stoll(argv[2]);
+    if (EqualsIgnoreCase(argv[3], FLAG_TEST_MOD))
+    {
+        args.isTestMod = true;
+    }
+    else
+    {
+        args.durationLimit = std::stod(argv[3]);
+    }
+    if (argc >= 5 && EqualsIgnoreCase(argv[4], FLAG_LOGGING_ON))
+    {
+        args.isLoggingOn = true;
+    }
+    else if (argc == 6 && EqualsIgnoreCase(argv[5], FLAG_DURATION_ON))
+    {
+        args.isDurationOn = true;
+    }
 
     return args;
 }
 
-std::atomic<bool> shouldExit(false);
-void SignalHandler(int signal)
+std::atomic<SimulationController*> activeController = nullptr;
+
+void GlobalSignalHandler(int signal)
 {
-    if (signal == SIGINT || signal == SIGTERM) {
-        std::cout << "Received signal " << signal << ", terminating..." << std::endl;
-        shouldExit = true;
+    if (signal == SIGINT || signal == SIGTERM)
+    {
+        std::cout << std::endl << "Received signal " << signal << ", stopping simulation..." << std::endl;
+        if (auto controller = activeController.load())
+        {
+            controller->StopSimulation();
+        }
     }
 }
 
 int main(int argc, char* argv[])
 {
-    std::signal(SIGINT, SignalHandler);
-    std::signal(SIGTERM, SignalHandler);
-
     ExceptionHandler exceptionHandler;
     exceptionHandler.Handle([&]() {
         ProgramArgs args = ParseArgs(argc, argv);
 
-        auto bank = std::make_shared<Bank>(args.initialCash);
-        SimulationExecutor simulationExecutor(bank, 10000);
+        auto bank = std::make_shared<Bank>(BANK_BALANCE);
+        auto sim = std::make_shared<Simulation>(bank, args.initialCash,
+                args.durationLimit, args.isLoggingOn, args.isDurationOn);
+        SimulationController simulationController(sim, args.isTestMod, args.isParallel);
 
-        if (args.isParallel)
+        if (!args.isTestMod)
         {
-            Logger::Println("Starting simulation in parallel mode...");
-            // TODO: simulation
+            activeController.store(&simulationController);
+            std::signal(SIGINT, GlobalSignalHandler);
+            std::signal(SIGTERM, GlobalSignalHandler);
         }
-        else
-        {
-            Logger::Println("Starting simulation in sequential mode...");
-            while (!shouldExit.load())
-            {
-                std::string command;
-                std::getline(std::cin, command);
 
-                if (command == "step") {
-                    simulationExecutor.ExecuteSequentialStep();
-                }
-            }
-        }
+        simulationController.RunSimulation();
+        activeController.store(nullptr);
     });
 
     if (exceptionHandler.WasExceptionCaught())
