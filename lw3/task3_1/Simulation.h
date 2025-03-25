@@ -11,7 +11,13 @@
 #include "_libs/_logger.h"
 #include "_libs/_timer.h"
 #include "Bank.h"
-#include "Actor.h"
+#include "actor/Actor.h"
+#include "actor/Bart.h"
+#include "actor/Liza.h"
+#include "actor/Marge.h"
+#include "actor/Homer.h"
+#include "actor/Berns.h"
+#include "actor/Apu.h"
 
 class Simulation : public std::enable_shared_from_this<Simulation>
 {
@@ -62,10 +68,20 @@ public:
 
     void ExecuteSequentialStep()
     {
+        Logger::OPrintln("-----------------------------");
         for (auto& actor : m_actors)
         {
-            actor.ExecuteAction();
+            try
+            {
+                actor->DoExecute();
+            }
+            catch (const std::exception& e)
+            {
+                Logger::Error(e.what());
+                return;
+            }
         }
+        Logger::OPrintln("-----------------------------");
     }
 
     void ExecuteParallel()
@@ -76,14 +92,14 @@ public:
 
         for (auto& actor : m_actors)
         {
-            threads.emplace_back([self = shared_from_this(), actorRef = std::ref(actor)]() {
+            threads.emplace_back([self = shared_from_this(), actorPtr = actor]() {
                 Timer timer;
                 while (self->m_isRunning.load())
                 {
                     if (timer.GetElapsed() >= self->m_simulationDuration) break;
                     Timer localTimer;
-                    actorRef.get().ExecuteAction();
-                    if (self->m_isDurationOn) AddSleep(localTimer);
+                    actorPtr->DoExecute();
+                    if (self->m_isDurationOn) self->AddSleep(localTimer);
                 }
             });
         }
@@ -91,14 +107,14 @@ public:
 
 private:
     std::shared_ptr<Bank> m_bank;
-    std::vector<Actor> m_actors;
+    std::vector<std::shared_ptr<Actor>> m_actors;
     Money m_initialCash;
     double m_simulationDuration;
     std::atomic<bool> m_isRunning;
     bool m_isLoggingOn;
     bool m_isDurationOn;
 
-    void AddSleep(Timer& timer)
+    void AddSleep(Timer& timer) const
     {
         double delta = STEP_DURATION - timer.GetElapsed();
         if (delta > 0)
@@ -111,68 +127,24 @@ private:
     {
         AccountId homerId = m_bank->OpenAccount();
         AccountId margeId = m_bank->OpenAccount();
+        AccountId bartId = m_bank->OpenAccount();
+        AccountId lizaId = m_bank->OpenAccount();
         AccountId apuId = m_bank->OpenAccount();
+        AccountId bernsId = m_bank->OpenAccount();
 
-        m_actors.emplace_back(homerId, [bank = this->m_bank, homerId, margeId, isLoggingOn = m_isLoggingOn]() {
-            ExceptionHandler exceptionHandler;
+        auto berns = std::make_shared<Berns>(bernsId, homerId, *m_bank);
+        auto apu = std::make_shared<Apu>(apuId, bernsId, *m_bank);
+        auto bart = std::make_shared<Bart>(bartId, *apu);
+        auto liza = std::make_shared<Liza>(lizaId, *apu);
+        auto marge = std::make_shared<Marge>(margeId, apuId, *m_bank);
+        auto homer = std::make_shared<Homer>(homerId, margeId, bernsId, *m_
+        bank, *bart, *liza);
 
-            exceptionHandler.Handle([bank, homerId, margeId, isLoggingOn]() {
-                Money amount = 100;
-                bank->SendMoney(homerId, margeId, amount);
+        m_actors = {homer, marge, bart, liza, apu, berns};
 
-                if (isLoggingOn)
-                {
-                    Logger::Println("Гомер перевёл " + std::to_string(amount) + " на счёт Мардж");
-                    auto homerBalance = bank->GetAccountBalance(homerId);
-                    auto margeBalance = bank->GetAccountBalance(margeId);
-                    Logger::Println("Баланс Гомера: " + std::to_string(homerBalance));
-                    Logger::Println("Баланс Мардж: " + std::to_string(margeBalance));
-                }
-            });
-
-            if (exceptionHandler.WasExceptionCaught())
-            {
-                Logger::Error("Ошибка у Гомера " + exceptionHandler.GetErrorMessage());
-            }
-        });
-        m_actors.emplace_back(margeId, [bank = this->m_bank, apuId, margeId, isLoggingOn = m_isLoggingOn]() {
-            ExceptionHandler exceptionHandler;
-
-            exceptionHandler.Handle([bank, apuId, margeId, isLoggingOn]() {
-                Money amount = 50;
-                bank->SendMoney(margeId, apuId, amount);
-
-                if (isLoggingOn)
-                {
-                    Logger::Println("Мардж перевела " + std::to_string(amount) + " на счёт Апу за продукты");
-                    auto apuBalance = bank->GetAccountBalance(apuId);
-                    auto margeBalance = bank->GetAccountBalance(margeId);
-                    Logger::Println("Баланс Апу: " + std::to_string(apuBalance));
-                    Logger::Println("Баланс Мардж: " + std::to_string(margeBalance));
-                }
-            });
-
-            if (exceptionHandler.WasExceptionCaught())
-            {
-                Logger::Error("Ошибка у Мардж " + exceptionHandler.GetErrorMessage());
-            }
-        });
-        m_actors.emplace_back(apuId, [bank = this->m_bank, apuId, margeId, isLoggingOn = m_isLoggingOn]() {
-        });
-
-        if (auto accountsCount = m_bank->GetAccountsCount(); accountsCount > 0)
-        {
-            for (auto& actor : m_actors)
-            {
-                m_bank->DepositMoney(actor.GetId(), static_cast<Money>(m_initialCash / accountsCount));
-            }
-            m_bank->DepositMoney(m_actors.back().GetId(), static_cast<Money>(m_initialCash % accountsCount));
-        }
-        auto homerBalance = m_bank->GetAccountBalance(homerId);
-        auto margeBalance = m_bank->GetAccountBalance(margeId);
-        auto apuBalance = m_bank->GetAccountBalance(apuId);
-        Logger::Println("Баланс Гомера: " + std::to_string(homerBalance));
-        Logger::Println("Баланс Мардж: " + std::to_string(margeBalance));
-        Logger::Println("Баланс Апу: " + std::to_string(apuBalance));
+        m_bank->DepositMoney(homerId, static_cast<Money>(m_initialCash / 4));
+        m_bank->DepositMoney(margeId, static_cast<Money>(m_initialCash / 4));
+        m_bank->DepositMoney(apuId, static_cast<Money>(m_initialCash / 4));
+        m_bank->DepositMoney(bernsId, static_cast<Money>(m_initialCash / 4));
     }
 };

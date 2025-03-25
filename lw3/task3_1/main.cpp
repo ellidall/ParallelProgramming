@@ -41,14 +41,8 @@ ProgramArgs ParseArgs(int argc, char* argv[])
 
     ProgramArgs args;
     std::string flag = argv[1];
-    if (EqualsIgnoreCase(flag, FLAG_PARALLEL))
-    {
-        args.isParallel = true;
-    }
-    else if (EqualsIgnoreCase(flag, FLAG_SEQUENTIAL))
-    {
-        args.isParallel = false;
-    }
+    if (EqualsIgnoreCase(flag, FLAG_PARALLEL)) args.isParallel = true;
+    else if (EqualsIgnoreCase(flag, FLAG_SEQUENTIAL)) args.isParallel = false;
     else
     {
         PrintUsage();
@@ -56,22 +50,12 @@ ProgramArgs ParseArgs(int argc, char* argv[])
     }
 
     args.initialCash = std::stoll(argv[2]);
-    if (EqualsIgnoreCase(argv[3], FLAG_TEST_MOD))
-    {
-        args.isTestMod = true;
-    }
-    else
-    {
-        args.durationLimit = std::stod(argv[3]);
-    }
-    if (argc >= 5 && EqualsIgnoreCase(argv[4], FLAG_LOGGING_ON))
-    {
-        args.isLoggingOn = true;
-    }
-    else if (argc == 6 && EqualsIgnoreCase(argv[5], FLAG_DURATION_ON))
-    {
-        args.isDurationOn = true;
-    }
+
+    if (EqualsIgnoreCase(argv[3], FLAG_TEST_MOD)) args.isTestMod = true;
+    else args.durationLimit = std::stod(argv[3]);
+
+    if (argc >= 5 && EqualsIgnoreCase(argv[4], FLAG_LOGGING_ON)) args.isLoggingOn = true;
+    if (argc == 6 && EqualsIgnoreCase(argv[5], FLAG_DURATION_ON)) args.isDurationOn = true;
 
     return args;
 }
@@ -82,7 +66,6 @@ void GlobalSignalHandler(int signal)
 {
     if (signal == SIGINT || signal == SIGTERM)
     {
-        std::cout << std::endl << "Received signal " << signal << ", stopping simulation..." << std::endl;
         if (auto controller = activeController.load())
         {
             controller->StopSimulation();

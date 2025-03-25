@@ -54,22 +54,22 @@ private:
 
     void RunParallelSimulation()
     {
-        Logger::Println("Starting simulation in parallel mode...");
+        Logger::OPrintln("Starting simulation in parallel mode...");
         simulation->ExecuteParallel();
     }
 
     void RunSequentialSimulation()
     {
-        Logger::Println("Starting simulation in sequential mode...");
+        Logger::OPrintln("Starting simulation in sequential mode...");
         simulation->ExecuteSequential();
     }
 
     void RunTestModeSimulation()
     {
-        Logger::Println("Starting simulation in sequential test mode...");
-        Logger::Println("Usage:");
-        Logger::Println("\t<" + COMMAND_STEP + ">: runs simulation step");
-        Logger::Println("\t<" + COMMAND_EXIT + ">: exits from simulation");
+        Logger::OPrintln("Starting simulation in sequential test mode...");
+        Logger::OPrintln("Usage:");
+        Logger::OPrintln("\t<" + COMMAND_STEP + ">: runs simulation step");
+        Logger::OPrintln("\t<" + COMMAND_EXIT + ">: exits from simulation");
 
         bool shouldExit = false;
         while (!shouldExit)

@@ -1,10 +1,11 @@
 #pragma once
 
 #include <iostream>
-#include <map>
+#include <unordered_map>
 #include <mutex>
 #include <atomic>
 #include <stdexcept>
+#include <shared_mutex>
 
 using AccountId = unsigned long long;
 using Money = long long;
@@ -18,37 +19,52 @@ public:
 class Bank
 {
 public:
-    explicit Bank(Money initialMoney) : m_money(initialMoney)
+    struct Account
     {
-        if (initialMoney < 0)
+        Money money{};
+        mutable std::shared_mutex mutex;
+    };
+
+    explicit Bank(Money initialCash)
+    {
+        if (initialCash < 0)
         {
             throw std::out_of_range("Количество наличных в банке не может быть отрицательным");
         }
+        m_cash = initialCash;
     };
 
     size_t GetAccountsCount() const
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::shared_lock lock(m_mutexAccounts);
         return m_accounts.size();
     }
 
     AccountId OpenAccount()
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        m_accounts[m_nextId] = 0;
+        std::unique_lock lock(m_mutexAccounts);
+        m_accounts.emplace(std::piecewise_construct, std::forward_as_tuple(m_nextId), std::forward_as_tuple());
         m_operationsCount++;
         return m_nextId++;
     }
 
     Money CloseAccount(AccountId accountId)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        auto it = m_accounts.find(accountId);
-        if (it == m_accounts.end()) throw BankOperationError("Неизвестный аккаунт");
+        auto it = FindAccount(accountId);
 
-        Money balance = it->second;
-        m_accounts.erase(it);
-        m_money += balance;
+        Money balance;
+        {
+            std::unique_lock lock(it->second.mutex);
+            balance = it->second.money;
+        }
+        {
+            std::unique_lock lock(m_mutexAccounts);
+            m_accounts.erase(it);
+        }
+        {
+            std::unique_lock lock(m_mutexCash);
+            m_cash += balance;
+        }
         m_operationsCount++;
         return balance;
     }
@@ -63,15 +79,18 @@ public:
 
     bool TryDepositMoney(AccountId account, Money amount)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) return false;
-        if (m_money < amount) return false;
+        if (amount < 0) throw std::out_of_range("Количество денег не может быть отрицательным");
+        auto it = FindAccount(account);
+        {
+            std::unique_lock lock(m_mutexCash);
+            if (m_cash < amount) return false;
+            m_cash -= amount;
+        }
+        {
+            std::unique_lock lock(it->second.mutex);
+            it->second.money += amount;
+        }
 
-        auto it = m_accounts.find(account);
-        if (it == m_accounts.end()) return false;
-
-        it->second += amount;
-        m_money -= amount;
         m_operationsCount++;
         return true;
     }
@@ -86,15 +105,17 @@ public:
 
     bool TryWithdrawMoney(AccountId account, Money amount)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) return false;
-
-        auto it = m_accounts.find(account);
-        if (it == m_accounts.end()) return false;
-        if (it->second < amount) return false; // Недостаточно средств на счету
-
-        it->second -= amount;
-        m_money += amount;
+        if (amount < 0) throw std::out_of_range("Количество денег не может быть отрицательным");;
+        auto it = FindAccount(account);
+        {
+            std::unique_lock lock(it->second.mutex);
+            if (it->second.money < amount) return false;
+            it->second.money -= amount;
+        }
+        {
+            std::unique_lock lock(m_mutexCash);
+            m_cash += amount;
+        }
         m_operationsCount++;
         return true;
     }
@@ -109,37 +130,39 @@ public:
 
     bool TrySendMoney(AccountId srcAccountId, AccountId dstAccountId, Money amount)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (amount < 0) return false;
+        if (amount < 0) throw std::out_of_range("Количество денег не может быть отрицательным");;
 
-        auto srcIt = m_accounts.find(srcAccountId);
-        auto dstIt = m_accounts.find(dstAccountId);
-        if (srcIt == m_accounts.end() || dstIt == m_accounts.end()) return false;
-        if (srcIt->second < amount) return false;
+        std::shared_lock lock(m_mutexAccounts);
+        auto srcIt = FindAccount(srcAccountId);
+        auto dstIt = FindAccount(dstAccountId);
 
-        srcIt->second -= amount;
-        dstIt->second += amount;
+        {
+            std::scoped_lock scopedLock(srcIt->second.mutex, dstIt->second.mutex);
+            if (srcIt->second.money < amount) return false;
+            srcIt->second.money -= amount;
+            dstIt->second.money += amount;
+        }
+
         m_operationsCount++;
         return true;
     }
 
-    Money GetCash() const
+    Money GetTotalMoney() const
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::shared_lock lock(m_mutexAccounts);
         Money total = 0;
-        for (const auto& [accountId, balance] : m_accounts)
+        for (const auto& [accountId, acc] : m_accounts)
         {
-            total += balance;
+            total += acc.money;
         }
         return total;
     }
 
     Money GetAccountBalance(AccountId accountId) const
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        auto it = m_accounts.find(accountId);
-        if (it == m_accounts.end()) throw BankOperationError("Неизвестный аккаунт");
-        return it->second;
+        auto it = FindAccount(accountId);
+        std::shared_lock lock(it->second.mutex);
+        return it->second.money;
     }
 
     unsigned long long GetOperationsCount() const
@@ -148,9 +171,26 @@ public:
     }
 
 private:
-    mutable std::mutex mtx;
+    mutable std::shared_mutex m_mutexCash;
+    mutable std::shared_mutex m_mutexAccounts;// accountsMutex
     AccountId m_nextId = 0;
-    std::map<AccountId, Money> m_accounts;
+    std::unordered_map<AccountId, Account> m_accounts;
     std::atomic<unsigned long long> m_operationsCount = 0;
-    Money m_money;
+    Money m_cash;
+
+    std::unordered_map<AccountId, Account>::iterator FindAccount(AccountId accountId)
+    {
+        std::shared_lock lock(m_mutexAccounts);
+        auto it = m_accounts.find(accountId);
+        if (it == m_accounts.end()) throw BankOperationError("Неизвестный аккаунт");
+        return it;
+    }
+
+    std::unordered_map<AccountId, Account>::const_iterator FindAccount(AccountId accountId) const
+    {
+        std::shared_lock lock(m_mutexAccounts);
+        auto it = m_accounts.find(accountId);
+        if (it == m_accounts.end()) throw BankOperationError("Неизвестный аккаунт");
+        return it;
+    }
 };
