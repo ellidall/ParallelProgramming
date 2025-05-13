@@ -1,0 +1,17 @@
++---------------------+
+|   lockfree::queue   |
++---------------------+
+| head_               | --> tagged_ptr<node>
+| tail_               | --> tagged_ptr<node>
+| pool (freelist)     | --> reusable nodes
++---------------------+
+
+struct node {
+  std::atomic<tagged_ptr<node>> next;  // следующий узел
+  T data;                                // данные
+}
+
+struct tagged_ptr {
+    T* ptr;        // обычный указатель
+    size_t tag;    // счётчик изменений
+};
