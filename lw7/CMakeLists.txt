@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 23)
 add_subdirectory(task7_1)
 add_subdirectory(task7_2)
 add_subdirectory(task7_3)
+add_subdirectory(task7_4)
 
 #include(FetchContent)
 #FetchContent_Declare(
