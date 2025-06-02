@@ -1,0 +1,99 @@
+#pragma once
+#include <CL/opencl.h>
+#include <CL/cl2.hpp>
+#include <vector>
+#include <algorithm>
+#include <iostream>
+#include <chrono>
+#include <limits>
+
+class BitonicSorter {
+public:
+    BitonicSorter() {
+        InitializeOpenCL();
+    }
+
+    void Sort(std::vector<int>& data) {
+        PadToPowerOfTwo(data);
+        size_t m_n = data.size();
+
+        cl::Buffer m_buffer(m_context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(int) * m_n, data.data());
+
+        for (size_t m_k = 2; m_k <= m_n; m_k <<= 1) {
+            for (size_t m_j = m_k >> 1; m_j > 0; m_j >>= 1) {
+                m_kernel.setArg(0, m_buffer);
+                m_kernel.setArg(1, static_cast<cl_uint>(m_j));
+                m_kernel.setArg(2, static_cast<cl_uint>(m_k));
+
+                cl::NDRange m_global(m_n);
+                m_queue.enqueueNDRangeKernel(m_kernel, cl::NullRange, m_global, cl::NullRange);
+                m_queue.finish();
+            }
+        }
+
+        m_queue.enqueueReadBuffer(m_buffer, CL_TRUE, 0, sizeof(int) * m_n, data.data());
+    }
+
+private:
+    void InitializeOpenCL() {
+        std::vector<cl::Platform> m_platforms;
+        cl::Platform::get(&m_platforms);
+        if (m_platforms.empty()) throw std::runtime_error("No OpenCL platforms found");
+
+        cl::Platform m_platform = m_platforms[0];
+
+        std::vector<cl::Device> m_devices;
+        m_platform.getDevices(CL_DEVICE_TYPE_GPU, &m_devices);
+        if (m_devices.empty()) throw std::runtime_error("No GPU devices found");
+
+        m_device = m_devices[0];
+        m_context = cl::Context(m_device);
+        m_queue = cl::CommandQueue(m_context, m_device);
+
+        const char* m_kernelSource = R"(
+        __kernel void bitonicSort(__global int* data, uint j, uint k) {
+            uint i = get_global_id(0);
+            uint ixj = i ^ j;
+            if (ixj > i) {
+                if ((i & k) == 0) {
+                    if (data[i] > data[ixj]) {
+                        int temp = data[i];
+                        data[i] = data[ixj];
+                        data[ixj] = temp;
+                    }
+                } else {
+                    if (data[i] < data[ixj]) {
+                        int temp = data[i];
+                        data[i] = data[ixj];
+                        data[ixj] = temp;
+                    }
+                }
+            }
+        })";
+
+        std::string kernelSourceStr(m_kernelSource);
+        cl::Program::Sources m_sources(1, kernelSourceStr);
+        m_program = cl::Program(m_context, m_sources);
+
+        if (m_program.build({ m_device }) != CL_SUCCESS) {
+            throw std::runtime_error("Error building OpenCL program: " + m_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(m_device));
+        }
+
+        m_kernel = cl::Kernel(m_program, "bitonicSort");
+    }
+
+    void PadToPowerOfTwo(std::vector<int>& data) {
+        size_t m_n = data.size();
+        size_t m_pow2 = 1;
+        while (m_pow2 < m_n) m_pow2 <<= 1;
+        if (m_pow2 != m_n) {
+            data.resize(m_pow2, std::numeric_limits<int>::max());
+        }
+    }
+
+    cl::Context m_context;
+    cl::Device m_device;
+    cl::CommandQueue m_queue;
+    cl::Program m_program;
+    cl::Kernel m_kernel;
+};
