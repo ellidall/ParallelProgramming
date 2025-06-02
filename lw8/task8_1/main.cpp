@@ -7,7 +7,7 @@
 #include "_libs/_logger.h"
 
 int main() {
-    std::vector<int> dataGpu(100000);
+    std::vector<int> dataGpu(16);
     std::generate(dataGpu.begin(), dataGpu.end(), []() { return rand(); });
     std::vector<int> dataCpu = dataGpu;
 
