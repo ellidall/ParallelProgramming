@@ -1,4 +1,5 @@
 #pragma once
+
 #include <CL/opencl.h>
 #include <CL/cl2.hpp>
 #include <vector>
@@ -15,26 +16,32 @@ public:
 
     void Sort(std::vector<int>& data) {
         PadToPowerOfTwo(data);
-        size_t m_n = data.size();
+        size_t n = data.size();
 
-        cl::Buffer m_buffer(m_context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(int) * m_n, data.data());
+        cl::Buffer buffer(m_context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(int) * n, data.data());
 
-        for (size_t m_k = 2; m_k <= m_n; m_k <<= 1) {
-            for (size_t m_j = m_k >> 1; m_j > 0; m_j >>= 1) {
-                m_kernel.setArg(0, m_buffer);
-                m_kernel.setArg(1, static_cast<cl_uint>(m_j));
-                m_kernel.setArg(2, static_cast<cl_uint>(m_k));
+        for (size_t k = 2; k <= n; k <<= 1) {
+            for (size_t j = k >> 1; j > 0; j >>= 1) {
+                m_kernel.setArg(0, buffer);
+                m_kernel.setArg(1, static_cast<cl_uint>(j));
+                m_kernel.setArg(2, static_cast<cl_uint>(k));
 
-                cl::NDRange m_global(m_n);
-                m_queue.enqueueNDRangeKernel(m_kernel, cl::NullRange, m_global, cl::NullRange);
+                cl::NDRange global(n);
+                m_queue.enqueueNDRangeKernel(m_kernel, cl::NullRange, global, cl::NullRange);
                 m_queue.finish();
             }
         }
 
-        m_queue.enqueueReadBuffer(m_buffer, CL_TRUE, 0, sizeof(int) * m_n, data.data());
+        m_queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(int) * n, data.data());
     }
 
 private:
+    cl::Context m_context;
+    cl::Device m_device;
+    cl::CommandQueue m_queue;
+    cl::Program m_program;
+    cl::Kernel m_kernel;
+    
     void InitializeOpenCL() {
         std::vector<cl::Platform> m_platforms;
         cl::Platform::get(&m_platforms);
@@ -82,18 +89,12 @@ private:
         m_kernel = cl::Kernel(m_program, "bitonicSort");
     }
 
-    void PadToPowerOfTwo(std::vector<int>& data) {
-        size_t m_n = data.size();
-        size_t m_pow2 = 1;
-        while (m_pow2 < m_n) m_pow2 <<= 1;
-        if (m_pow2 != m_n) {
-            data.resize(m_pow2, std::numeric_limits<int>::max());
+    static void PadToPowerOfTwo(std::vector<int>& data) {
+        size_t n = data.size();
+        size_t pow2 = 1;
+        while (pow2 < n) pow2 <<= 1;
+        if (pow2 != n) {
+            data.resize(pow2, std::numeric_limits<int>::max());
         }
     }
-
-    cl::Context m_context;
-    cl::Device m_device;
-    cl::CommandQueue m_queue;
-    cl::Program m_program;
-    cl::Kernel m_kernel;
 };

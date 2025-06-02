@@ -14,7 +14,7 @@ void Print(std::ofstream& out, std::vector<int>& data){
 }
 
 int main() {
-    std::vector<int> dataGpu(134217728);
+    std::vector<int> dataGpu(100);
     std::generate(dataGpu.begin(), dataGpu.end(), []() { return rand(); });
     std::vector<int> dataCpu = dataGpu;
 
@@ -28,10 +28,10 @@ int main() {
     std::sort(std::execution::par, dataCpu.begin(), dataCpu.end());
     auto timeCpu = timer.GetElapsed();
 
-//    std::ofstream outGpu("C:/Sasha/Studying/ParallelProgramming/lw8/task8_1/bin/outGpu.txt");
-//    std::ofstream outCpu("C:/Sasha/Studying/ParallelProgramming/lw8/task8_1/bin/outCpu.txt");
-//    Print(outGpu, dataGpu);
-//    Print(outCpu, dataCpu);
+    std::ofstream outGpu("C:/Sasha/Studying/ParallelProgramming/lw8/task8_1/bin/outGpu.txt");
+    std::ofstream outCpu("C:/Sasha/Studying/ParallelProgramming/lw8/task8_1/bin/outCpu.txt");
+    Print(outGpu, dataGpu);
+    Print(outCpu, dataCpu);
 
     Logger::Println("GPU bitonic sort time: " + std::to_string(timeGpu));
     Logger::Println("CPU parallel std::sort time: " + std::to_string(timeCpu));

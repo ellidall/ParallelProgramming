@@ -4,6 +4,7 @@ project(lw8)
 set(CMAKE_CXX_STANDARD 23)
 
 add_subdirectory(task8_1)
+add_subdirectory(task8_2)
 
 #include(FetchContent)
 #FetchContent_Declare(
