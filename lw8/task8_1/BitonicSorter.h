@@ -28,6 +28,7 @@ public:
 
                 cl::NDRange global(n);
                 m_queue.enqueueNDRangeKernel(m_kernel, cl::NullRange, global, cl::NullRange);
+                // без ожтданий
                 m_queue.finish();
             }
         }
@@ -58,6 +59,7 @@ private:
         m_queue = cl::CommandQueue(m_context, m_device);
 
         const char* m_kernelSource = R"(
+// код понятнее
         __kernel void bitonicSort(__global int* data, uint j, uint k) {
             uint i = get_global_id(0);
             uint ixj = i ^ j;
